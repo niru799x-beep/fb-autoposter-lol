@@ -24,7 +24,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install requests openpyxl boto3
+        run: pip install requests openpyxl boto3 python-dateutil
 
       - name: Run auto-poster
         env:
