@@ -34,6 +34,7 @@ import boto3
 import tempfile
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+from dateutil import parser as dateparser
 
 # ── Config ────────────────────────────────────────────
 PAGE_ID       = os.environ.get("FACEBOOK_PAGE_ID",      "YOUR_PAGE_ID")
@@ -99,14 +100,39 @@ def load_sheet():
 def save_sheet(wb):
     wb.save(EXCEL_FILE)
 
+def parse_schedule(schedule):
+    """
+    Schedule Time কলামের value থেকে একটা real datetime বের করে।
+    - যদি Excel থেকে ইতিমধ্যে real datetime আসে, সরাসরি সেটাই ব্যবহার হয়।
+    - যদি কোনো কারণে (যেমন TEXT() ফর্মুলা বা Text-ফরম্যাটেড সেল) এটা
+      স্ট্রিং হিসেবে আসে (যেমন "25-08-2026 07:15"), তাহলেও parse করে
+      real datetime-এ বদলে নেয় — যাতে সেই row miss/skip না হয়।
+    ভুল/অচেনা ফরম্যাট হলে None রিটার্ন করে।
+    """
+    if schedule is None:
+        return None
+    if isinstance(schedule, datetime):
+        return schedule
+    try:
+        # dayfirst=True কারণ ফরম্যাট dd-mm-yyyy
+        return dateparser.parse(str(schedule).strip(), dayfirst=True)
+    except (ValueError, TypeError):
+        return None
+
+
 def get_due_rows(ws):
     now = datetime.now(IST).replace(tzinfo=None)
     due = []
     for row in ws.iter_rows(min_row=2, values_only=False):
-        status   = row[COL_STATUS - 1].value
-        schedule = row[COL_SCHEDULE - 1].value
+        status       = row[COL_STATUS - 1].value
+        schedule_raw = row[COL_SCHEDULE - 1].value
         if status and str(status).strip().lower() == "pending":
-            if schedule and isinstance(schedule, datetime) and schedule <= now:
+            schedule = parse_schedule(schedule_raw)
+            if schedule is None and schedule_raw:
+                print(f"  ⚠️ Row {row[0].row}: Schedule Time বোঝা গেল না "
+                      f"({schedule_raw!r}) — এই row skip করা হলো")
+                continue
+            if schedule and schedule <= now:
                 due.append(row)
     return due
 
